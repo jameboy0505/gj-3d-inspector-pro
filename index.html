@@ -18266,7 +18266,6 @@
 
           const wrapper = new THREE.Group();
           wrapper.name = `Import_${fileName.replace(/\.[^.]+$/, '')}`;
-          wrapper.userData.__isUserGroup = true;
           wrapper.userData.__isAddedModel = true;
           wrapper.userData.__displayName = fileName;
           wrapper.add(threeGroup);
