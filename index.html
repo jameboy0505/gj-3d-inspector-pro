@@ -10628,7 +10628,6 @@
                   const cleanName = file.name.replace(/\.(glb|gltf)$/i, '');
                   const { wrapper, size, tris } = normalizeLoadedGLBToGroup(rawRoot, `Added_${cleanName}`);
                   wrapper.userData.__isAddedModel = true;
-                  wrapper.userData.__isUserGroup = true;
                   wrapper.userData.__displayName = file.name;
                   wrapper.userData.__origBoxSize = size.clone();
 
