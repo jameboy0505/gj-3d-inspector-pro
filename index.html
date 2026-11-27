@@ -2993,21 +2993,21 @@
         }
         if (code === 'KeyF') {
           e.preventDefault();
-          if (state.selectedObject) focusOnObject(state.selectedObject);
+          if (state.selectedObject) document.getElementById('sel-btn-focus')?.click();
           else applyCameraPreset('fit', true);
           return;
         }
         if (code === 'KeyH') {
           if (state.selectedObject) {
             e.preventDefault();
-            hideNodeExplicit(state.selectedObject.uuid);
+            document.getElementById('sel-btn-hide')?.click();
           }
           return;
         }
         if (code === 'Delete' || code === 'Backspace') {
           if (state.selectedObject) {
             e.preventDefault();
-            deleteNodeExplicit(state.selectedObject.uuid);
+            document.getElementById('sel-btn-delete')?.click();
           }
           return;
         }
@@ -10628,6 +10628,7 @@
                   const cleanName = file.name.replace(/\.(glb|gltf)$/i, '');
                   const { wrapper, size, tris } = normalizeLoadedGLBToGroup(rawRoot, `Added_${cleanName}`);
                   wrapper.userData.__isAddedModel = true;
+                  wrapper.userData.__isUserGroup = true;
                   wrapper.userData.__displayName = file.name;
                   wrapper.userData.__origBoxSize = size.clone();
 
@@ -18191,7 +18192,7 @@
         fileInput.accept = ACCEPT_ATTR;
         fileInput.multiple = true;
 
-        const addModelInput = document.getElementById('studio-add-model-input');
+        const addModelInput = document.getElementById('bld-add-model-input') || document.getElementById('studio-add-model-input');
         if (addModelInput) addModelInput.accept = ACCEPT_ATTR;
 
         const multiAddInput = document.createElement('input');
@@ -18266,6 +18267,8 @@
           const wrapper = new THREE.Group();
           wrapper.name = `Import_${fileName.replace(/\.[^.]+$/, '')}`;
           wrapper.userData.__isUserGroup = true;
+          wrapper.userData.__isAddedModel = true;
+          wrapper.userData.__displayName = fileName;
           wrapper.add(threeGroup);
           state.modelRoot.add(wrapper);
           wrapper.updateMatrixWorld(true);
@@ -18358,6 +18361,11 @@
           if (renderer.shadowMap.enabled) renderer.shadowMap.needsUpdate = true;
 
           state.selectedObject = wrapper;
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              document.querySelector('.ms-tf-mode-btn[data-tgmode="translate"]')?.click();
+            });
+          });
           focusOnObject(wrapper);
           showToast(`แทรก "${fileName}" สำเร็จ (${addedMeshes.length} ชิ้น • กด Ctrl+Z ย้อนได้)`, 'success');
         }
@@ -18745,11 +18753,12 @@
           multiAddInput.value = '';
           if (copy.length === 0) return;
           const allGltf = copy.every((f) => /\.(glb|gltf)$/i.test(f.name));
-          if (allGltf && addModelInput) {
+          const targetGltfInput = document.getElementById('bld-add-model-input') || addModelInput;
+          if (allGltf && targetGltfInput) {
             const dt = new DataTransfer();
             copy.forEach((f) => dt.items.add(f));
-            addModelInput.files = dt.files;
-            addModelInput.dispatchEvent(new Event('change'));
+            targetGltfInput.files = dt.files;
+            targetGltfInput.dispatchEvent(new Event('change'));
           } else {
             handleAddOverlayFiles(copy);
           }
@@ -22918,6 +22927,327 @@ ${matsXml.join('\n')}
         setTimeout(initFinalQAPolish, 1420);
       } else {
         window.addEventListener('load', () => setTimeout(initFinalQAPolish, 1460));
+      }
+    })();
+  </script>
+  <!-- ===================================================================== -->
+  <!-- G&J 3D STUDIO v16: MASTER SHORTCUT, UNDO/REDO & BUTTON REPAIR PATCH   -->
+  <!-- 1. Thai + English Keyboard Support (e.code) for ALL Ctrl & Single Keys-->
+  <!-- 2. Auto-Blur Sliders/Color/Checkbox/Select so Ctrl+Z/Del NEVER freeze -->
+  <!-- 3. Fix WxHxD Enter-Key & Added-Model Align buttons -> Master Ctrl+Z   -->
+  <!-- 4. Sync dim-btn-undo / pro-align-undo + refresh WxHxD after Undo/Redo -->
+  <!-- 5. Prevent state.undoStack MAX_HISTORY (100) overflow lock            -->
+  <!-- 6. Restore missing Ctrl+K Header Button & fix F1 Help in Ctrl+K       -->
+  <!-- ===================================================================== -->
+  <script id="gj-v16-master-fix">
+    (function () {
+      'use strict';
+
+      function isTypingTextControl(el) {
+        if (!el) return false;
+        if (el.isContentEditable) return true;
+        const tag = el.tagName;
+        if (tag === 'TEXTAREA') return true;
+        if (tag === 'INPUT') {
+          const t = (el.type || 'text').toLowerCase();
+          return ['text', 'number', 'search', 'email', 'password', 'url', 'tel'].includes(t);
+        }
+        return false;
+      }
+
+      // 1. คลายโฟกัสจาก Slider / Checkbox / Color / Select อัตโนมัติหลังปรับค่า
+      //    เพื่อไม่ให้ค้างโฟกัสไปบล็อก Ctrl+Z, Delete, H, F, G, R, B ในสคริปต์ทุกตัว
+      document.addEventListener('change', (e) => {
+        const el = e.target;
+        if (!el) return;
+        const tag = el.tagName;
+        if (tag === 'SELECT') {
+          el.blur();
+        } else if (tag === 'INPUT') {
+          const t = (el.type || '').toLowerCase();
+          if (t === 'range' || t === 'checkbox' || t === 'radio' || t === 'color') {
+            el.blur();
+          }
+        }
+      }, true);
+
+      window.addEventListener('pointerup', () => {
+        const ae = document.activeElement;
+        if (ae && ae.tagName === 'INPUT') {
+          const t = (ae.type || '').toLowerCase();
+          if (t === 'range' || t === 'checkbox' || t === 'radio') {
+            setTimeout(() => { try { ae.blur(); } catch (_) {} }, 0);
+          }
+        }
+      }, true);
+
+      function initV16MasterFix() {
+        if (window.__GJ_V16_MASTER_FIX_INIT__) return;
+        const core = window.__GJ_CORE__;
+        if (!core || !window.__GJ_UNDO_GROUP_INIT__) {
+          setTimeout(initV16MasterFix, 200);
+          return;
+        }
+        window.__GJ_V16_MASTER_FIX_INIT__ = true;
+
+        const { state, scene, controls } = core;
+
+        function scheduleDimAndUiRefresh() {
+          setTimeout(() => {
+            window.dispatchEvent(new PointerEvent('pointerup', { bubbles: false }));
+          }, 70);
+        }
+
+        // -------------------------------------------------------------------
+        // 2. UNIVERSAL KEYBOARD BRIDGE (รองรับทั้งคีย์บอร์ดไทย TH + อังกฤษ EN)
+        //    ทำงานเมื่อสคริปต์เดิมพลาดเพราะภาษาไทย หรือโฟกัสค้างที่ Slider/Select
+        // -------------------------------------------------------------------
+        window.addEventListener('keydown', (e) => {
+          const ae = document.activeElement;
+          if (isTypingTextControl(ae)) return;
+
+          const blockedByNonTextFocus = !!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT'));
+          const isNonAsciiKey = !/^[a-z0-9]$/i.test(e.key || '');
+          const code = e.code || '';
+
+          if (e.ctrlKey || e.metaKey) {
+            // Ctrl+K (ค้นหาคำสั่งด่วน) — ทำงานได้ทั้ง EN และ TH (า)
+            if (code === 'KeyK') {
+              if (isNonAsciiKey || blockedByNonTextFocus) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                if (blockedByNonTextFocus) ae.blur();
+                const modal = document.getElementById('gj-cmd-modal');
+                if (modal) {
+                  if (modal.classList.contains('hidden')) modal.classList.remove('hidden');
+                  else modal.classList.add('hidden');
+                }
+              }
+              return;
+            }
+
+            // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z (Master Undo / Redo)
+            if (code === 'KeyZ' || code === 'KeyY') {
+              scheduleDimAndUiRefresh();
+              if (isNonAsciiKey || blockedByNonTextFocus) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                if (blockedByNonTextFocus) ae.blur();
+                const isRedo = (code === 'KeyY') || (code === 'KeyZ' && e.shiftKey);
+                const btn = document.getElementById(isRedo ? 'btn-redo' : 'btn-undo');
+                if (btn && !btn.disabled) btn.click();
+              }
+              return;
+            }
+
+            // Ctrl+C / Ctrl+V / Ctrl+D / Ctrl+G / Ctrl+Shift+G (TH + Non-Text Focus)
+            if (isNonAsciiKey || blockedByNonTextFocus) {
+              const hasTextSel = window.getSelection && window.getSelection().toString().length > 0;
+              if (code === 'KeyC' && !e.shiftKey && !hasTextSel) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                if (blockedByNonTextFocus) ae.blur();
+                document.getElementById('cp-btn-copy')?.click();
+              } else if (code === 'KeyV' && !hasTextSel) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                if (blockedByNonTextFocus) ae.blur();
+                const pBtn = document.getElementById('cp-btn-paste');
+                if (pBtn && !pBtn.disabled) pBtn.click();
+              } else if (code === 'KeyD') {
+                e.preventDefault(); e.stopImmediatePropagation();
+                if (blockedByNonTextFocus) ae.blur();
+                document.getElementById('cp-btn-dup')?.click();
+              } else if (code === 'KeyG' && !e.shiftKey) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                if (blockedByNonTextFocus) ae.blur();
+                const gBtn = document.getElementById('grp-btn-group');
+                if (gBtn && !gBtn.disabled) gBtn.click();
+              } else if (code === 'KeyG' && e.shiftKey) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                if (blockedByNonTextFocus) ae.blur();
+                const ugBtn = document.getElementById('grp-btn-ungroup');
+                if (ugBtn && !ugBtn.disabled) ugBtn.click();
+              }
+            }
+            return;
+          }
+
+          // คีย์ลัดเดี่ยว (ไม่กด Ctrl/Alt): รองรับทั้งตอนโฟกัสค้างที่ Slider/Select และ CutBox 1/2/3/0 ภาษาไทย
+          if (!e.altKey) {
+            const stGizmoBar = document.getElementById('st-gizmo-bar');
+            const hasStudioGizmo = !!(stGizmoBar && !stGizmoBar.classList.contains('hidden'));
+            if (hasStudioGizmo && isNonAsciiKey) {
+              if (code === 'Digit1') { document.querySelector('.st-gmode-btn[data-gmode="translate"]')?.click(); return; }
+              if (code === 'Digit2') { document.querySelector('.st-gmode-btn[data-gmode="rotate"]')?.click(); return; }
+              if (code === 'Digit3') { document.querySelector('.st-gmode-btn[data-gmode="scale"]')?.click(); return; }
+              if (code === 'Digit0') { document.getElementById('st-btn-detach')?.click(); return; }
+            }
+
+            if (blockedByNonTextFocus) {
+              if (code === 'Delete' || code === 'Backspace') {
+                if (state.selectedObject) {
+                  e.preventDefault(); e.stopImmediatePropagation();
+                  ae.blur();
+                  document.getElementById('sel-btn-delete')?.click();
+                }
+              } else if (code === 'KeyH') {
+                if (state.selectedObject) {
+                  e.preventDefault(); e.stopImmediatePropagation();
+                  ae.blur();
+                  document.getElementById('sel-btn-hide')?.click();
+                }
+              } else if (code === 'KeyF') {
+                e.preventDefault(); e.stopImmediatePropagation();
+                ae.blur();
+                if (state.selectedObject) document.getElementById('sel-btn-focus')?.click();
+                else document.querySelector('.preset-btn[data-preset="fit"]')?.click();
+              } else if (code === 'KeyG' && state.selectedObject) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                ae.blur();
+                document.getElementById('ux-rtab-object')?.click();
+                document.getElementById('ux-subtab-tf')?.click();
+                document.querySelector('.ms-tf-mode-btn[data-tgmode="translate"]')?.click();
+              } else if (code === 'KeyR' && state.selectedObject) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                ae.blur();
+                document.getElementById('ux-rtab-object')?.click();
+                document.getElementById('ux-subtab-tf')?.click();
+                document.querySelector('.ms-tf-mode-btn[data-tgmode="rotate"]')?.click();
+              } else if (code === 'KeyB') {
+                e.preventDefault(); e.stopImmediatePropagation();
+                ae.blur();
+                document.getElementById('mn-mode-boxsel')?.click();
+              } else if (code === 'KeyP') {
+                e.preventDefault(); e.stopImmediatePropagation();
+                ae.blur();
+                document.getElementById('mn-mode-sketch')?.click();
+              } else if (code === 'KeyM') {
+                e.preventDefault(); e.stopImmediatePropagation();
+                ae.blur();
+                document.getElementById('mn-mode-markup')?.click();
+              }
+            }
+          }
+        }, true);
+
+        // -------------------------------------------------------------------
+        // 3. รีเฟรชตัวเลข W×H×D ทุกครั้งที่กดปุ่ม Undo / Redo บนแถบใดก็ตาม
+        // -------------------------------------------------------------------
+        window.addEventListener('click', (e) => {
+          const btn = e.target && e.target.closest
+            ? e.target.closest('#btn-undo, #btn-redo, #btn-rec-undo, #ms-tf-undo, #dim-btn-undo, #pro-align-undo, #st-btn-undo-cut, #st-btn-redo-cut')
+            : null;
+          if (btn && !btn.disabled) scheduleDimAndUiRefresh();
+        }, true);
+
+        // -------------------------------------------------------------------
+        // 4. เชื่อมการพิมพ์ขนาด W×H×D + กด Enter และปุ่มจัดวางโมเดลเสริม เข้า Master Ctrl+Z
+        // -------------------------------------------------------------------
+        const multiG = scene.getObjectByName('__MultiSelectGizmo__');
+        let v16BridgeActive = false;
+
+        function startTransformBridge() {
+          if (!multiG || v16BridgeActive) return;
+          v16BridgeActive = true;
+          multiG.dispatchEvent({ type: 'dragging-changed', value: true });
+        }
+        function endTransformBridge() {
+          if (!multiG || !v16BridgeActive) return;
+          v16BridgeActive = false;
+          multiG.dispatchEvent({ type: 'dragging-changed', value: false });
+          controls.enabled = !state.freeFlyMode;
+          scheduleDimAndUiRefresh();
+        }
+
+        ['dim-in-w', 'dim-in-h', 'dim-in-d'].forEach((id) => {
+          const inp = document.getElementById(id);
+          if (!inp) return;
+          inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              startTransformBridge();
+              setTimeout(endTransformBridge, 25);
+            }
+          }, true);
+        });
+
+        ['st-snap-cutbox', 'st-fit-cutbox', 'st-drop-floor', 'st-rot-90'].forEach((id) => {
+          const btn = document.getElementById(id);
+          if (!btn) return;
+          btn.addEventListener('pointerdown', () => startTransformBridge(), true);
+          btn.addEventListener('click', () => setTimeout(endTransformBridge, 45), true);
+        });
+
+        // -------------------------------------------------------------------
+        // 5. ซิงค์สถานะปุ่ม ย้อนกลับ ย่อย (dim-btn-undo / pro-align-undo) กับ #btn-undo
+        // -------------------------------------------------------------------
+        const mainUndoBtn = document.getElementById('btn-undo');
+        const dimUndoBtn = document.getElementById('dim-btn-undo');
+        const alignUndoBtn = document.getElementById('pro-align-undo');
+        const recUndoBtn = document.getElementById('btn-rec-undo');
+
+        if (mainUndoBtn) {
+          const syncSubUndoBtns = () => {
+            const isDis = !!mainUndoBtn.disabled;
+            if (dimUndoBtn) dimUndoBtn.disabled = isDis;
+            if (alignUndoBtn) alignUndoBtn.disabled = isDis;
+            if (recUndoBtn) recUndoBtn.disabled = isDis;
+          };
+          syncSubUndoBtns();
+          new MutationObserver(syncSubUndoBtns).observe(mainUndoBtn, { attributes: true, attributeFilter: ['disabled'] });
+
+          if (alignUndoBtn) {
+            alignUndoBtn.title = 'ย้อนกลับล่าสุด (เชื่อม Master Undo — Ctrl+Z)';
+            alignUndoBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopImmediatePropagation();
+              mainUndoBtn.click();
+            }, true);
+          }
+        }
+
+        // -------------------------------------------------------------------
+        // 6. กัน state.undoStack เต็ม MAX_HISTORY=100 แล้ว watcherTick หยุดบันทึก
+        // -------------------------------------------------------------------
+        setInterval(() => {
+          if (state.undoStack && state.undoStack.length >= 90) {
+            state.undoStack.splice(0, 20);
+          }
+        }, 4000);
+
+        // -------------------------------------------------------------------
+        // 7. แก้บัคปุ่ม Ctrl+K หายบน Header & แก้คำสั่งเปิดคู่มือ F1 ใน Ctrl+K
+        //    (ID จริงใน v5 คือ #mn-help-btn ไม่ใช่ #mn-manual-btn)
+        // -------------------------------------------------------------------
+        const helpBtn = document.getElementById('mn-help-btn');
+        const cmdModal = document.getElementById('gj-cmd-modal');
+        if (helpBtn && helpBtn.parentNode && !document.getElementById('gj-hdr-cmd')) {
+          const cmdBtn = document.createElement('button');
+          cmdBtn.id = 'gj-hdr-cmd';
+          cmdBtn.type = 'button';
+          cmdBtn.title = 'ค้นหาคำสั่งด่วน (Ctrl+K)';
+          cmdBtn.className = 'flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-xs transition';
+          cmdBtn.innerHTML = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg><kbd class="text-[9.5px] font-mono text-slate-400">Ctrl+K</kbd>`;
+          cmdBtn.addEventListener('click', () => {
+            if (cmdModal) cmdModal.classList.remove('hidden');
+          });
+          helpBtn.parentNode.insertBefore(cmdBtn, helpBtn);
+        }
+
+        // ดักคลิกแถว "คู่มือการใช้งาน" ใน Ctrl+K ให้เปิด #mn-help-btn จริง
+        const cmdList = document.getElementById('gj-cmd-list');
+        if (cmdList && helpBtn) {
+          cmdList.addEventListener('click', (e) => {
+            const row = e.target && e.target.closest ? e.target.closest('button') : null;
+            if (row && row.textContent.includes('คู่มือการใช้งาน')) {
+              setTimeout(() => helpBtn.click(), 20);
+            }
+          }, true);
+        }
+      }
+
+      if (document.readyState === 'complete') {
+        setTimeout(initV16MasterFix, 1520);
+      } else {
+        window.addEventListener('load', () => setTimeout(initV16MasterFix, 1560));
       }
     })();
   </script>
